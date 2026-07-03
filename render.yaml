@@ -1,0 +1,29 @@
+services:
+  - type: web
+    name: researchmind-backend
+    env: python
+    buildCommand: cd backend && pip install -r requirements.txt
+    startCommand: cd backend && uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PORT
+        value: 80
+      - key: APP_ENV
+        value: production
+      - key: DEBUG
+        value: "false"
+      - key: DATABASE_URL
+        value: sqlite:////var/data/researchmind.db
+      - key: CHROMA_PERSIST_DIR
+        value: /var/data/chromadb_data
+      - key: UPLOAD_DIR
+        value: /var/data/uploaded_papers
+      - key: EMBEDDING_ENGINE
+        value: local
+      - key: OPENAI_API_KEY
+        sync: true
+      - key: ALLOWED_ORIGINS
+        value: https://your-vercel-domain.vercel.app,http://localhost:5173
+    disk:
+      name: researchmind-data
+      mountPath: /var/data
+      sizeGB: 1

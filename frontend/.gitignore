@@ -1,0 +1,18 @@
+# Production Bundles
+dist/
+
+# Dependencies
+node_modules/
+
+# Environments
+.env
+.env.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS-specific
+.DS_Store
+Thumbs.db

@@ -1,0 +1,16 @@
+fastapi>=0.110.0
+uvicorn>=0.28.0
+pydantic>=2.6.0
+pydantic-settings>=2.2.0
+langgraph>=0.0.30
+langchain>=0.1.13
+langchain-openai>=0.1.1
+sqlalchemy>=2.0.28
+chromadb>=0.4.24
+sentence-transformers>=2.5.1
+pymupdf>=1.23.26
+python-dotenv>=1.0.1
+python-multipart>=0.0.9
+pytest>=8.1.1
+requests>=2.31.0
+pyjwt>=2.8.0

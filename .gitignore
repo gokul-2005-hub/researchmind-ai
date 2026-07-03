@@ -1,0 +1,40 @@
+# Dependency Directories
+node_modules/
+dist/
+.venv/
+venv/
+ENV/
+
+# Local databases and vector persistent directories
+*.db
+*.sqlite
+*.sqlite3
+backend/uploaded_papers/
+backend/chromadb_data/
+frontend/dist/
+
+# Environments and Secrets
+.env
+.env.local
+.env.production
+.env.development
+
+# Python Compiled Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# OS-specific temporary files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# IDE Configuration folders
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln

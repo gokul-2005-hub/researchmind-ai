@@ -1,0 +1,41 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: researchmind-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_NAME=ResearchMind AI
+      - APP_ENV=production
+      - DEBUG=false
+      - SQLITE_URL=sqlite:///db_data/researchmind.db
+      - CHROMA_PERSIST_DIR=/app/chromadb_data
+      - UPLOAD_DIR=/app/uploaded_papers
+      - EMBEDDING_ENGINE=local
+      - LOCAL_EMBEDDING_MODEL=all-MiniLM-L6-v2
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+    volumes:
+      - sqlite_data:/app/db_data
+      - chromadb_data:/app/chromadb_data
+      - uploaded_papers:/app/uploaded_papers
+    restart: always
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: researchmind-frontend
+    ports:
+      - "80:80"
+    environment:
+      - VITE_API_URL=http://localhost:8000/api/v1
+    depends_on:
+      - backend
+    restart: always
+
+volumes:
+  sqlite_data:
+  chromadb_data:
+  uploaded_papers:
