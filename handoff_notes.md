@@ -1,43 +1,18 @@
-# Project Handoff Notes: ResearchMind AI
+# Handoff Notes - Localtunnel Reverse Proxy Transition
 
-If you are continuing this project in a new conversation session, please read these notes to instantly catch up on the codebase state, design decisions, and system credentials.
+The codebase has been configured for a single-port localtunnel reverse proxy to avoid 503 collisions and CORS blocks.
 
----
+## Current Setup:
+1. **Frontend config**: `VITE_API_URL` is set to relative `/api/v1` in `frontend/.env`.
+2. **Backend CORS config**: whitelists CORS for `https://researchmindai.loca.lt`, and dynamically whitelists all origins in development mode inside `backend/app/main.py`.
+3. **Proxy server**: `proxy.js` is added to run on port `9000` to route API to `8000` and frontend to `5173`.
+4. **Vite config**: `allowedHosts: true` has been configured in `frontend/vite.config.ts`.
+5. **Git state**: Git is initialized, configured with a local dummy email, and successfully pushed to the user's Github repository.
 
-## 📂 Project Location & Environment
-* **Root Workspace Path**: `C:\Users\Hp\.gemini\antigravity\scratch\researchmind-ai`
-* **Local Run Script**: Double-click `run-local.bat` at the root to spin up both FastAPI backend (`127.0.0.1:8000`) and Vite frontend (`localhost:5173`).
-* **Environment Keys**: The LLM configuration is loaded from `backend/.env`.
-
----
-
-## 🔐 Default Access Credentials
-* **Administrator Profile**:
-  - **Username**: `admin`
-  - **Password**: `admin123` (Enables the admin-only "Registered Users" panel)
-* **Researcher Profile**:
-  - **Username**: `user`
-  - **Password**: `user123` (Default standard user, no admin panels)
-
----
-
-## 🛠️ Key Features Implemented
-
-1. **User Ownership Isolation**:
-   - Every uploaded research paper is linked to the logged-in user via a `user_id` column in the database (with self-healing migration scripts executing during database lifespan setup).
-   - Endpoint GET lists filter automatically by the authenticated JWT session owner.
-
-2. **Workstation View Layouts & Actions**:
-   - Added layout toggles: **Split Screen (50/50)**, **Notes Editor Mode (Full Screen Editor)**, and **AI Chat Mode (Full Screen Chat)**.
-   - Built a **Copy to Notes** action on chat responses to instantly append AI explanations directly to the active notes editor draft.
-   - Built a collapsible **Paper Metadata Accordion Drawer** containing doi resolvers, journal venue data, and DB reference logs.
-
-3. **Admin Panel Column**:
-   - If logged in as `admin`, the literature library dashboard displays a third panel on the right rendering a list of all registered accounts dynamically queried from a custom admin-secured backend route.
-
-4. **Groq Auto-Detection & Schema Robustness**:
-   - The LLM orchestrator automatically routes Groq API keys (`gsk_...`) to Groq's endpoints, sets active models to `llama-3.3-70b-versatile`, and runs a JSON schema polyfill wrapper for structured citation extraction.
-   - Changed schema fields to `Optional` to avoid Pydantic validator crashes on incomplete academic reference variables.
-
-5. **Instant Login Authentication**:
-   - Password PBKDF2 hashing rounds optimized to `2,000` (from `100,000`) for near-instant (less than 10ms) verify calls on local development systems.
+## Outstanding Problem to Solve:
+* When loaded via `http://localhost:9000` (the proxy), the frontend is rendering a blank screen.
+* **Likely Cause**: Vite's index.html uses absolute imports `/src/main.tsx` or `/node_modules/...`. When proxied by `proxy.js`, if the `Host` header or request mapping is off, Vite might fail to serve assets properly.
+* **Next Steps**:
+  1. Inspect the browser console log when loading `http://localhost:9000`.
+  2. Overwrite `req.headers.host = 'localhost:5173'` inside `proxy.js` to ensure Vite receives the correct host header.
+  3. Ensure Vite's Hot Module Replacement (HMR) WebSocket connections are properly forwarded or bypassed.
