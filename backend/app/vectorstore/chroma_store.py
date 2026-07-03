@@ -135,6 +135,22 @@ class ChromaRepository:
             logger.exception("Failed to execute ChromaDB query.")
             raise RuntimeError(f"ChromaDB search failed: {str(e)}")
 
+    def get_chunks_count(self, paper_id: str) -> int:
+        """
+        Returns the number of vector documents indexed for a specific paper.
+        """
+        try:
+            results = self.collection.get(
+                where={"paper_id": str(paper_id)},
+                include=[] # Empty array means retrieve count/IDs only without documents/embeddings
+            )
+            if results and "ids" in results:
+                return len(results["ids"])
+            return 0
+        except Exception as e:
+            logger.error("Failed to check ChromaDB chunk count for paper %s: %s", paper_id, str(e))
+            return 0
+
     def delete_paper_chunks(self, paper_id: str) -> None:
         """
         Deletes all vector indexes associated with a specific paper ID.

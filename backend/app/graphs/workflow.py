@@ -124,6 +124,31 @@ def build_research_workflow(
         search_query = state["search_query"]
         if not search_query.strip() and selected_agent == "summary_agent":
             search_query = "abstract introduction methodology results conclusion summary overview"
+            
+        # Self-healing ChromaDB re-indexing check
+        try:
+            from app.models.orm import PaperChunkORM
+            indexed_count = vector_repo.get_chunks_count(paper_id)
+            db_chunks_count = db.query(PaperChunkORM).filter(PaperChunkORM.paper_id == paper_id).count()
+            
+            if indexed_count == 0 and db_chunks_count > 0:
+                logger.warning("Graph: Vector index is empty for paper %s but DB has chunks. Re-indexing on-the-fly...", paper_id)
+                db_chunks = db.query(PaperChunkORM).filter(PaperChunkORM.paper_id == paper_id).order_by(PaperChunkORM.chunk_index.asc()).all()
+                chunks_payload = [
+                    {
+                        "chunk_index": c.chunk_index,
+                        "text_content": c.text_content,
+                        "section_title": c.section_title,
+                        "start_page": c.start_page,
+                        "end_page": c.end_page
+                    }
+                    for c in db_chunks
+                ]
+                vector_repo.upsert_chunks(paper_id, chunks_payload)
+                logger.info("Graph: Re-indexing on-the-fly complete for paper %s.", paper_id)
+        except Exception as e:
+            logger.error("Graph: Self-healing vector re-indexing failed: %s", str(e))
+
         logger.info("Graph: Retrieval Agent executing vector search for '%s'...", search_query)
         
         results = vector_repo.similarity_search(

@@ -48,43 +48,47 @@ class PDFService:
             raise ProcessingError("Invalid file type. Only PDF documents are supported.")
             
         unique_filename = f"{file_id}{file_extension}"
-        dest_path = settings.UPLOAD_PATH / unique_filename
+        mock_path = f"database_blob/{unique_filename}"
 
-        logger.info("Saving uploaded PDF to disk at: %s", dest_path)
+        import tempfile
+        
+        # Write to temporary file for parser
+        logger.info("Writing uploaded PDF content to transient temp file...")
         try:
-            with open(dest_path, "wb") as f:
-                f.write(file_content)
+            with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp_file:
+                tmp_file.write(file_content)
+                temp_path = tmp_file.name
         except Exception as e:
-            logger.exception("Failed to write PDF file to disk.")
-            raise ProcessingError(f"Failed to persist file on disk: {str(e)}")
+            logger.exception("Failed to write transient PDF to temp file.")
+            raise ProcessingError(f"Failed to process transient PDF: {str(e)}")
 
         # Parse the PDF
         try:
-            parsed_data = self.parser.parse(str(dest_path))
+            parsed_data = self.parser.parse(temp_path)
         except Exception as e:
-            # Clean up saved file on parsing error
-            if dest_path.exists():
-                dest_path.unlink()
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
             logger.exception("Error parsing PDF structure.")
             raise ProcessingError(f"PDF extraction failed: {str(e)}")
 
         # Extract values
         meta = parsed_data["metadata"]
         
-        # Save Paper in database
+        # Save Paper in database with binary PDF data
         try:
             paper = self.paper_repo.create(
                 title=meta["title"],
                 authors=meta["authors"],
-                file_path=str(dest_path),
+                file_path=mock_path,
                 publication_year=meta["publication_year"],
                 journal_venue=meta["journal_venue"],
                 doi=meta["doi"],
-                user_id=user_id
+                user_id=user_id,
+                pdf_data=file_content
             )
         except Exception as e:
-            if dest_path.exists():
-                dest_path.unlink()
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
             raise ProcessingError(f"Failed to save paper meta in database: {str(e)}")
 
         # Create Semantic Chunks
@@ -110,14 +114,18 @@ class PDFService:
             for chunk in db_chunks:
                 self.db.refresh(chunk)
                 
-            logger.info("Completed parsing and storing Paper %s and its %d chunks.", paper.id, len(db_chunks))
+            # Clean up temp file
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+                
+            logger.info("Completed parsing and storing Paper %s and its %d chunks in database.", paper.id, len(db_chunks))
             return paper, db_chunks
             
         except Exception as e:
             self.db.rollback()
             # Clean up the paper and file since chunks failed
             self.paper_repo.delete(paper.id)
-            if dest_path.exists():
-                dest_path.unlink()
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
             logger.exception("Failed to chunk and save paper chunks.")
             raise ProcessingError(f"Chunk processing failed: {str(e)}")

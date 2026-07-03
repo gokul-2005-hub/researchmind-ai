@@ -32,7 +32,8 @@ class SQLAlchemyPaperRepository(PaperRepository):
                publication_year: Optional[int] = None, 
                journal_venue: Optional[str] = None, 
                doi: Optional[str] = None,
-               user_id: Optional[str] = None) -> PaperORM:
+               user_id: Optional[str] = None,
+               pdf_data: Optional[bytes] = None) -> PaperORM:
         paper = PaperORM(
             title=title,
             authors=authors,
@@ -40,7 +41,8 @@ class SQLAlchemyPaperRepository(PaperRepository):
             publication_year=publication_year,
             journal_venue=journal_venue,
             doi=doi,
-            user_id=user_id
+            user_id=user_id,
+            pdf_data=pdf_data
         )
         try:
             self.db.add(paper)

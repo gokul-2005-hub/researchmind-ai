@@ -246,22 +246,38 @@ async def download_paper(paper_id: str, db: Session = Depends(get_db), current_u
             detail="You do not have permission to access this paper."
         )
         
-    file_path = Path(paper.file_path)
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="PDF file not found on disk."
-        )
+    # Read PDF bytes: try DB first, fallback to disk for legacy papers
+    if paper.pdf_data:
+        pdf_bytes = paper.pdf_data
+    else:
+        file_path = Path(paper.file_path)
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="PDF file data not found in database or disk."
+            )
+        try:
+            with open(file_path, "rb") as f:
+                pdf_bytes = f.read()
+        except Exception as e:
+            logger.error("Failed to read paper file from disk: %s", str(e))
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to read paper file from disk."
+            )
         
     safe_title = "".join(c for c in paper.title if c.isalnum() or c in (" ", "_", "-")).strip()
     if not safe_title:
         safe_title = "paper"
     download_filename = f"{safe_title}.pdf"
     
-    return FileResponse(
-        path=file_path,
+    from fastapi import Response
+    return Response(
+        content=pdf_bytes,
         media_type="application/pdf",
-        filename=download_filename
+        headers={
+            "Content-Disposition": f"attachment; filename=\"{download_filename}\""
+        }
     )
 
 @router.get("/{paper_id}/view")
@@ -286,20 +302,28 @@ async def view_paper(paper_id: str, db: Session = Depends(get_db), current_user:
             detail="You do not have permission to view this paper."
         )
         
-    file_path = Path(paper.file_path)
-    if not file_path.exists():
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="PDF file not found on disk."
-        )
+    # Read PDF bytes: try DB first, fallback to disk for legacy papers
+    if paper.pdf_data:
+        pdf_bytes = paper.pdf_data
+    else:
+        file_path = Path(paper.file_path)
+        if not file_path.exists():
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="PDF file data not found in database or disk."
+            )
+        try:
+            with open(file_path, "rb") as f:
+                pdf_bytes = f.read()
+        except Exception as e:
+            logger.error("Failed to read paper file from disk: %s", str(e))
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to read paper file from disk."
+            )
         
-    safe_title = "".join(c for c in paper.title if c.isalnum() or c in (" ", "_", "-")).strip()
-    if not safe_title:
-        safe_title = "paper"
-    download_filename = f"{safe_title}.pdf"
-    
-    return FileResponse(
-        path=file_path,
-        media_type="application/pdf",
-        filename=download_filename
+    from fastapi import Response
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf"
     )
