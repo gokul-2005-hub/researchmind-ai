@@ -29,6 +29,24 @@ def bg_index_chunks(paper_id: str, chunks_payload: list):
     except Exception as e:
         logger.error("Background Task Failure: Vector indexing failed for paper %s: %s", paper_id, str(e))
 
+def bg_generate_summary(paper_id: str, user_id: Optional[str] = None):
+    """
+    Executes LLM summary and analysis generation in a background thread
+    immediately after a paper is uploaded so it's ready when the user opens the workstation.
+    """
+    try:
+        from app.database.connection import SessionLocal
+        from app.api.notes import generate_paper_summary
+        db = SessionLocal()
+        try:
+            logger.info("Background Task: Generating auto-summary for paper %s...", paper_id)
+            generate_paper_summary(db, paper_id, user_id)
+            logger.info("Background Task: Auto-summary generated successfully for paper %s.", paper_id)
+        finally:
+            db.close()
+    except Exception as e:
+        logger.error("Background Task Failure: Auto-summary generation failed for paper %s: %s", paper_id, str(e))
+
 logger = logging.getLogger("app.api.papers")
 
 router = APIRouter(prefix="/papers", tags=["Papers"])
@@ -82,6 +100,10 @@ async def upload_paper(
         # 3. Schedule the CPU-heavy vector calculations in a background task
         logger.info("Enqueuing vector indexing background task for paper %s (%d chunks)", paper.id, len(chunks_payload))
         background_tasks.add_task(bg_index_chunks, paper.id, chunks_payload)
+        
+        # 4. Schedule the auto-summary generation background task
+        logger.info("Enqueuing summary generation background task for paper %s", paper.id)
+        background_tasks.add_task(bg_generate_summary, paper.id, user_id)
         
         return paper
 

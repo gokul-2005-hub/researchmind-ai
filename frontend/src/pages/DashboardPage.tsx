@@ -538,7 +538,7 @@ export const DashboardPage: React.FC = () => {
                       onClick={() => {
                         setWorkspacePaperId(p.id)
                         setActivePaperId(p.id)
-                        setLayoutMode("chat")
+                        setLayoutMode("split")
                       }}
                       className="group relative p-4 bg-white dark:bg-slate-905 border-slate-200 dark:border-slate-900 hover:border-indigo-500/40 dark:hover:border-indigo-500/30 hover:shadow-md cursor-pointer flex flex-col justify-between min-h-[140px] transition duration-200"
                     >
@@ -689,7 +689,7 @@ export const DashboardPage: React.FC = () => {
                     setActivePaperId(p.id)
                     setWorkspacePaperId(p.id)
                     setWorkspaceUserId(p.user_id || user?.id)
-                    setLayoutMode("chat")
+                    setLayoutMode("split")
                   }}
                   className="group relative p-5 bg-white dark:bg-slate-905 border-slate-200 dark:border-slate-900 hover:border-indigo-500/40 dark:hover:border-indigo-500/30 hover:shadow-md hover:shadow-indigo-500/5 cursor-pointer flex flex-col justify-between min-h-[160px] transition duration-200 animate-scale-up"
                 >
