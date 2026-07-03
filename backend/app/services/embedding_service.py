@@ -70,54 +70,66 @@ class LocalEmbeddingService(BaseEmbeddingService):
 
 class OpenAIEmbeddingService(BaseEmbeddingService):
     """
-    Cloud-based embedding generation using OpenAI's API.
+    Cloud-based embedding generation using OpenAI's API (or Groq fallback).
     """
     def __init__(self, api_key: str, model_name: str):
         self.api_key = api_key
         self.model_name = model_name
         self._client = None
+        self.is_groq = api_key.startswith("gsk_") if api_key else False
 
     @property
     def client(self):
         if self._client is None:
             if not self.api_key:
-                raise ValueError("OpenAI API key is required but missing from environment configurations.")
+                raise ValueError("OpenAI/Groq API key is required but missing from environment configurations.")
             try:
                 from openai import OpenAI
-                self._client = OpenAI(api_key=self.api_key)
+                if self.is_groq:
+                    logger.info("Initializing OpenAI Client configured for Groq embeddings...")
+                    self._client = OpenAI(
+                        api_key=self.api_key,
+                        base_url="https://api.groq.com/openai/v1"
+                    )
+                else:
+                    self._client = OpenAI(api_key=self.api_key)
             except Exception as e:
-                logger.exception("Failed to initialize OpenAI client.")
-                raise RuntimeError(f"OpenAI init failed: {str(e)}")
+                logger.exception("Failed to initialize OpenAI/Groq client.")
+                raise RuntimeError(f"OpenAI/Groq init failed: {str(e)}")
         return self._client
 
     def embed_query(self, text: str) -> List[float]:
         # Replace newlines as recommended by OpenAI documentation
         clean_text = text.replace("\n", " ")
+        model = "mixbread-ai/mxbai-embed-large" if self.is_groq else self.model_name
         try:
             response = self.client.embeddings.create(
                 input=[clean_text],
-                model=self.model_name
+                model=model
             )
             return response.data[0].embedding
         except Exception as e:
-            logger.error("Error calling OpenAI embedding API: %s", str(e))
+            logger.error("Error calling embedding API: %s", str(e))
             raise
 
     def embed_documents(self, texts: List[str]) -> List[List[float]]:
         if not texts:
             return []
         clean_texts = [t.replace("\n", " ") for t in texts]
+        model = "mixbread-ai/mxbai-embed-large" if self.is_groq else self.model_name
         try:
             response = self.client.embeddings.create(
                 input=clean_texts,
-                model=self.model_name
+                model=model
             )
             return [data.embedding for data in response.data]
         except Exception as e:
-            logger.error("Error calling OpenAI batch embedding API: %s", str(e))
+            logger.error("Error calling batch embedding API: %s", str(e))
             raise
 
     def get_dimensions(self) -> int:
+        if self.is_groq:
+            return 1024 # mxbai-embed-large outputs 1024 dimensions
         # text-embedding-3-small defaults to 1536
         if "text-embedding-3-small" in self.model_name:
             return 1536
