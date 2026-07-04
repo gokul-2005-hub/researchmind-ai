@@ -119,18 +119,7 @@ async def lifespan(app: FastAPI):
         finally:
             db.close()
             
-        # Pre-warm/preload embedding service model in RAM at startup
-        try:
-            from app.services.embedding_service import get_embedding_service
-            logger.info("Pre-warming embedding service model...")
-            embedding_service = get_embedding_service()
-            # If it has a model attribute (like LocalEmbeddingService), access it to trigger caching
-            if hasattr(embedding_service, "model"):
-                _ = embedding_service.model
-            logger.info("Embedding service model pre-warmed successfully.")
-        except Exception as e:
-            logger.warning("Failed to pre-warm embedding service: %s", str(e))
-            
+        pass
     except Exception as e:
         logger.exception("Failed to initialize database tables: %s", str(e))
         raise

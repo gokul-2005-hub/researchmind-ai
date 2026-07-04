@@ -213,8 +213,8 @@ def get_embedding_service() -> BaseEmbeddingService:
     if engine_choice == "openai":
         # Check if they are using a Groq key (which has no embedding support)
         if settings.OPENAI_API_KEY.startswith("gsk_"):
-            logger.info("Groq API key detected for OpenAI embedding engine. Auto-routing to local SentenceTransformer embeddings for stability.")
-            return LocalEmbeddingService(model_name=settings.LOCAL_EMBEDDING_MODEL)
+            logger.info("Groq API key detected for OpenAI embedding engine. Auto-routing to Hugging Face Cloud embeddings to prevent memory crashes.")
+            return HuggingFaceEmbeddingService(api_key="")
         # Check if they are using a Hugging Face key
         if settings.OPENAI_API_KEY.startswith("hf_"):
             logger.info("Hugging Face API key detected. Using Hugging Face Cloud embeddings.")
