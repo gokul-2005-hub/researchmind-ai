@@ -22,26 +22,29 @@ class BaseEmbeddingService(ABC):
         pass
 
 
+_LOCAL_MODEL_CACHE = {}
+
 class LocalEmbeddingService(BaseEmbeddingService):
     """
     Local embedding generation using Sentence Transformers. Runs entirely offline.
+    Reuses a globally cached model instance to prevent disk loading overhead.
     """
     def __init__(self, model_name: str):
         self.model_name = model_name
-        self._model = None
 
     @property
     def model(self):
-        if self._model is None:
-            logger.info("Initializing local SentenceTransformer model: %s", self.model_name)
+        global _LOCAL_MODEL_CACHE
+        if self.model_name not in _LOCAL_MODEL_CACHE:
+            logger.info("Initializing local SentenceTransformer model (singleton): %s", self.model_name)
             try:
                 from sentence_transformers import SentenceTransformer
-                self._model = SentenceTransformer(self.model_name)
-                logger.info("SentenceTransformer model loaded successfully.")
+                _LOCAL_MODEL_CACHE[self.model_name] = SentenceTransformer(self.model_name)
+                logger.info("SentenceTransformer model loaded successfully and cached in RAM.")
             except Exception as e:
                 logger.exception("Failed to load local SentenceTransformer model.")
                 raise RuntimeError(f"Failed to load embedding model: {str(e)}")
-        return self._model
+        return _LOCAL_MODEL_CACHE[self.model_name]
 
     def embed_query(self, text: str) -> List[float]:
         try:
@@ -200,8 +203,8 @@ def get_embedding_service() -> BaseEmbeddingService:
     if engine_choice == "openai":
         # Check if they are using a Groq key (which has no embedding support)
         if settings.OPENAI_API_KEY.startswith("gsk_"):
-            logger.info("Groq API key detected for OpenAI embedding engine. Auto-routing to Hugging Face Cloud embeddings for compatibility.")
-            return HuggingFaceEmbeddingService(api_key="")
+            logger.info("Groq API key detected for OpenAI embedding engine. Auto-routing to local SentenceTransformer embeddings for stability.")
+            return LocalEmbeddingService(model_name=settings.LOCAL_EMBEDDING_MODEL)
         # Check if they are using a Hugging Face key
         if settings.OPENAI_API_KEY.startswith("hf_"):
             logger.info("Hugging Face API key detected. Using Hugging Face Cloud embeddings.")
