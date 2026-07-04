@@ -78,6 +78,7 @@ export const useChats = (userId?: string) => {
   return {
     sessions: sessionsQuery.data || [],
     isLoadingSessions: sessionsQuery.isLoading,
+    isFetchedSessions: sessionsQuery.isFetched,
     messages: messagesQuery.data || [],
     isLoadingMessages: messagesQuery.isLoading,
     createSession: createSessionMutation.mutateAsync,
