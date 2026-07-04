@@ -38,7 +38,7 @@ export const DashboardPage: React.FC = () => {
 
   const [workspaceUserId, setWorkspaceUserId] = useState<string | undefined>(undefined)
   const [workspacePaperId, setWorkspacePaperId] = useState<string | null>(null)
-  const { sessions, createSession, deleteSession } = useChats(workspaceUserId)
+  const { sessions, createSession, deleteSession, isLoadingSessions } = useChats(workspaceUserId)
 
   const { 
     activePaperId, 
@@ -213,6 +213,13 @@ export const DashboardPage: React.FC = () => {
       setActiveSessionId(sessions[0].id)
     }
   }, [activePaperId, sessions, activeSessionId, setActiveSessionId])
+
+  // Auto-create and select session if empty
+  useEffect(() => {
+    if (activePaperId && !isLoadingSessions && sessions.length === 0) {
+      createSession({ paperId: activePaperId, title: "Discussion Thread #1" })
+    }
+  }, [activePaperId, sessions, isLoadingSessions, createSession])
 
   const handleCreateChatSession = async () => {
     if (!activePaperId) return

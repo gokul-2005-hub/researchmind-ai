@@ -276,10 +276,23 @@ export const NotesEditor: React.FC<{ userId?: string }> = ({ userId }) => {
       {/* Admin Edits Log (Visible ONLY to Admin) */}
       {user?.role === "admin" && (
         <div className="p-3 border-t border-slate-100 dark:border-slate-900 bg-slate-50/50 dark:bg-slate-950/20">
-          <span className="text-[10px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider block mb-2 flex items-center gap-1">
-            <History size={10} className="text-indigo-500" />
-            Admin Edits History Log (Private to Admin)
-          </span>
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-[10px] font-bold text-slate-455 dark:text-slate-550 uppercase tracking-wider flex items-center gap-1">
+              <History size={10} className="text-indigo-500" />
+              Admin Edits History Log (Private to Admin)
+            </span>
+            <button
+              onClick={() => {
+                if (window.confirm("Are you sure you want to clear the revision history for this paper?")) {
+                  setRevisions([])
+                  localStorage.removeItem(`rm_note_revisions_${activePaperId}`)
+                }
+              }}
+              className="text-[9px] text-red-500 hover:text-red-400 transition font-semibold cursor-pointer"
+            >
+              Clear Log
+            </button>
+          </div>
           <div className="max-h-[80px] overflow-y-auto space-y-1 scrollbar-thin">
             {revisions.length === 0 ? (
               <span className="text-[9px] italic text-slate-400">No edits logged yet in this workspace.</span>

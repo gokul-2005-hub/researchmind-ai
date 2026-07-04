@@ -138,6 +138,58 @@ class OpenAIEmbeddingService(BaseEmbeddingService):
         return 1536 # Fallback standard size
 
 
+class HuggingFaceEmbeddingService(BaseEmbeddingService):
+    """
+    Cloud-based embedding generation using Hugging Face's free Inference API.
+    Runs entirely in the cloud, completely free, with no API key required for low-volume.
+    """
+    def __init__(self, api_key: str, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+        self.api_key = api_key
+        self.model_name = model_name
+
+    def _call_hf(self, texts: List[str]) -> List[List[float]]:
+        import requests
+        import time
+        api_url = f"https://api-inference.huggingface.co/models/{self.model_name}"
+        headers = {}
+        # Only use the key if it is a Hugging Face token (starts with hf_)
+        if self.api_key and self.api_key.startswith("hf_"):
+            headers["Authorization"] = f"Bearer {self.api_key}"
+
+        for attempt in range(3):
+            try:
+                response = requests.post(api_url, headers=headers, json={"inputs": texts}, timeout=15)
+                if response.status_code == 200:
+                    res = response.json()
+                    if isinstance(res, list):
+                        return res
+                    raise RuntimeError(f"Unexpected HF response format: {res}")
+                elif response.status_code == 503:
+                    logger.info("Hugging Face model is loading, waiting 5s (attempt %d/3)...", attempt + 1)
+                    time.sleep(5)
+                    continue
+                else:
+                    raise RuntimeError(f"HF Inference API returned code {response.status_code}: {response.text}")
+            except Exception as e:
+                if attempt == 2:
+                    logger.error("Failed to query Hugging Face embedding API: %s", str(e))
+                    raise
+                time.sleep(2)
+        raise RuntimeError("Hugging Face Inference API timed out or failed after retries.")
+
+    def embed_query(self, text: str) -> List[float]:
+        res = self._call_hf([text])
+        return res[0]
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        if not texts:
+            return []
+        return self._call_hf(texts)
+
+    def get_dimensions(self) -> int:
+        return 384
+
+
 # Factory Function
 def get_embedding_service() -> BaseEmbeddingService:
     """
@@ -146,11 +198,23 @@ def get_embedding_service() -> BaseEmbeddingService:
     """
     engine_choice = settings.EMBEDDING_ENGINE.lower().strip()
     if engine_choice == "openai":
+        # Check if they are using a Groq key (which has no embedding support)
+        if settings.OPENAI_API_KEY.startswith("gsk_"):
+            logger.info("Groq API key detected for OpenAI embedding engine. Auto-routing to Hugging Face Cloud embeddings for compatibility.")
+            return HuggingFaceEmbeddingService(api_key="")
+        # Check if they are using a Hugging Face key
+        if settings.OPENAI_API_KEY.startswith("hf_"):
+            logger.info("Hugging Face API key detected. Using Hugging Face Cloud embeddings.")
+            return HuggingFaceEmbeddingService(api_key=settings.OPENAI_API_KEY)
+            
         logger.debug("Factory selected OpenAI embedding service.")
         return OpenAIEmbeddingService(
             api_key=settings.OPENAI_API_KEY,
             model_name=settings.OPENAI_EMBEDDING_MODEL
         )
+    elif engine_choice == "huggingface":
+        logger.debug("Factory selected Hugging Face embedding service.")
+        return HuggingFaceEmbeddingService(api_key=settings.OPENAI_API_KEY)
     else:
         logger.debug("Factory selected local SentenceTransformer embedding service.")
         return LocalEmbeddingService(

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 from sqlalchemy import Column, String, Integer, DateTime, ForeignKey, Text, JSON, LargeBinary
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, deferred
 from app.database.connection import Base
 
 def generate_uuid() -> str:
@@ -17,7 +17,7 @@ class PaperORM(Base):
     journal_venue = Column(String(250), nullable=True)
     doi = Column(String(100), nullable=True)
     file_path = Column(String(500), nullable=False)
-    pdf_data = Column(LargeBinary, nullable=True)
+    pdf_data = deferred(Column(LargeBinary, nullable=True))
     uploaded_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     user_id = Column(String(36), ForeignKey("users.id"), nullable=True)
 
