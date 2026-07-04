@@ -27,6 +27,7 @@ class Settings(BaseSettings):
 
     # LLM Settings
     OPENAI_API_KEY: str = ""
+    HF_API_KEY: str = ""
 
     # Embedding Settings
     # Supported: "local" or "openai"
