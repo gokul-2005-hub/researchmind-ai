@@ -36,10 +36,20 @@ class LocalEmbeddingService(BaseEmbeddingService):
     def model(self):
         global _LOCAL_MODEL_CACHE
         if self.model_name not in _LOCAL_MODEL_CACHE:
-            logger.info("Initializing local SentenceTransformer model (singleton): %s", self.model_name)
+            import os
+            base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+            local_path = os.path.join(base_dir, "app", "local_models", "all-MiniLM-L6-v2")
+            
+            if os.path.exists(local_path):
+                model_to_load = local_path
+                logger.info("Initializing local SentenceTransformer model from offline path: %s", local_path)
+            else:
+                model_to_load = self.model_name
+                logger.info("Initializing local SentenceTransformer model (singleton): %s", self.model_name)
+                
             try:
                 from sentence_transformers import SentenceTransformer
-                _LOCAL_MODEL_CACHE[self.model_name] = SentenceTransformer(self.model_name)
+                _LOCAL_MODEL_CACHE[self.model_name] = SentenceTransformer(model_to_load)
                 logger.info("SentenceTransformer model loaded successfully and cached in RAM.")
             except Exception as e:
                 logger.exception("Failed to load local SentenceTransformer model.")
