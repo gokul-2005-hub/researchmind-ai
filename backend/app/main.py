@@ -56,6 +56,20 @@ async def lifespan(app: FastAPI):
             logger.info("Database migration: Added user_id column to notes table.")
         except Exception:
             db.rollback()
+        try:
+            # Try adding pdf_data column as BYTEA (PostgreSQL)
+            db.execute(text("ALTER TABLE papers ADD COLUMN pdf_data BYTEA"))
+            db.commit()
+            logger.info("Database migration: Added pdf_data column (PostgreSQL) to papers table.")
+        except Exception:
+            db.rollback()
+            try:
+                # Try adding pdf_data column as BLOB (SQLite fallback)
+                db.execute(text("ALTER TABLE papers ADD COLUMN pdf_data BLOB"))
+                db.commit()
+                logger.info("Database migration: Added pdf_data column (SQLite) to papers table.")
+            except Exception:
+                db.rollback()
         finally:
             db.close()
         
