@@ -121,8 +121,7 @@ async def lifespan(app: FastAPI):
             
         pass
     except Exception as e:
-        logger.exception("Failed to initialize database tables: %s", str(e))
-        raise
+        logger.error("Failed to initialize database tables during startup: %s. Proceeding to boot-up so the server can bind to its port.", str(e))
     
     yield
     
