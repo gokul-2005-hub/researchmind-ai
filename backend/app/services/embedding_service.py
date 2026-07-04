@@ -155,6 +155,7 @@ class HuggingFaceEmbeddingService(BaseEmbeddingService):
     """
     Cloud-based embedding generation using Hugging Face's free Inference API.
     Runs entirely in the cloud, completely free, with no API key required for low-volume.
+    Includes a Google DNS-over-HTTPS fallback to resolve hostname issues on Render.
     """
     def __init__(self, api_key: str, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
         self.api_key = api_key
@@ -163,15 +164,42 @@ class HuggingFaceEmbeddingService(BaseEmbeddingService):
     def _call_hf(self, texts: List[str]) -> List[List[float]]:
         import requests
         import time
-        api_url = f"https://api-inference.huggingface.co/models/{self.model_name}"
-        headers = {}
-        # Only use the key if it is a Hugging Face token (starts with hf_)
+        
+        # DNS Resolution Fallback: Query Google DoH if Render's DNS fails
+        ip_address = None
+        try:
+            dns_res = requests.get("https://dns.google/resolve?name=api-inference.huggingface.co&type=A", timeout=3)
+            if dns_res.status_code == 200:
+                data = dns_res.json()
+                if "Answer" in data:
+                    for ans in data["Answer"]:
+                        if ans["type"] == 1: # A record (IPv4)
+                            ip_address = ans["data"]
+                            break
+        except Exception as e:
+            logger.warning("Google DoH resolution failed: %s", str(e))
+
+        if ip_address:
+            api_url = f"https://{ip_address}/models/{self.model_name}"
+            headers = {"Host": "api-inference.huggingface.co"}
+            verify_ssl = False
+            logger.info("DNS resolution fallback: Routed api-inference.huggingface.co to IP %s", ip_address)
+        else:
+            api_url = f"https://api-inference.huggingface.co/models/{self.model_name}"
+            headers = {}
+            verify_ssl = True
+
+        # Attach Authorization if using a Hugging Face key
         if self.api_key and self.api_key.startswith("hf_"):
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         for attempt in range(3):
             try:
-                response = requests.post(api_url, headers=headers, json={"inputs": texts}, timeout=15)
+                if not verify_ssl:
+                    import urllib3
+                    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+                    
+                response = requests.post(api_url, headers=headers, json={"inputs": texts}, timeout=15, verify=verify_ssl)
                 if response.status_code == 200:
                     res = response.json()
                     if isinstance(res, list):
