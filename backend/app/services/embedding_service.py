@@ -164,8 +164,8 @@ class HuggingFaceEmbeddingService(BaseEmbeddingService):
         import requests
         import time
         
-        # New Hugging Face Router endpoint (legacy api-inference.huggingface.co was deprecated/deleted)
-        api_url = f"https://router.huggingface.co/hf-inference/models/{self.model_name}"
+        # Explicitly specify the feature-extraction pipeline task to override default model tag
+        api_url = f"https://router.huggingface.co/hf-inference/pipeline/feature-extraction/{self.model_name}"
         headers = {}
         
         # Attach Authorization if using a key
