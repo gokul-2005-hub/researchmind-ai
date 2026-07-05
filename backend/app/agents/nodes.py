@@ -36,7 +36,7 @@ class AgentNodeRunner:
         
         if self.is_groq:
             logger.info("Auto-detect: Groq API Key prefix found.")
-            self.model_name = "llama-3.3-70b-versatile" # Fast, high-capacity model on Groq
+            self.model_name = settings.GROQ_MODEL
         else:
             self.model_name = "gpt-4o-mini" # OpenAI Structured Outputs model
 
