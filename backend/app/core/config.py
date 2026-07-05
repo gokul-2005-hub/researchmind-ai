@@ -33,8 +33,7 @@ class Settings(BaseSettings):
     # Supported: "local" or "openai"
     EMBEDDING_ENGINE: str = "local"
     OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
-    LOCAL_EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"
-
+    LOCAL_EMBEDDING_MODEL: str = "sentence-transformers/all-MiniLM-L6-v2"
     # Storage Configuration
     UPLOAD_DIR: str = "./uploaded_papers"
     MAX_UPLOAD_SIZE_MB: int = 10
