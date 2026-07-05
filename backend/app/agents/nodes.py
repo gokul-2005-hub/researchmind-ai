@@ -56,6 +56,42 @@ class AgentNodeRunner:
                 self._client = OpenAI(api_key=self.api_key)
         return self._client
 
+    def _run_completion_gemini(
+        self,
+        messages: List[Dict[str, str]],
+        response_format: Any,
+        temperature: float = 0.0
+    ) -> Any:
+        """
+        Executes structured output completion against Google Gemini using its OpenAI-compatible endpoint.
+        """
+        api_key = settings.GEMINI_API_KEY or (self.api_key if self.api_key.startswith("AIzaSy") else "")
+        if not api_key:
+            raise ValueError("Gemini API Key is missing. Please configure GEMINI_API_KEY in your environment.")
+            
+        logger.info("Auto-routing agent completion to Google Gemini (%s)...", settings.GEMINI_MODEL)
+        client = OpenAI(
+            api_key=api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
+        
+        # Inject JSON schema instructions for Gemini JSON mode validation
+        schema_json = response_format.model_json_schema()
+        payload_messages = [msg.copy() for msg in messages]
+        payload_messages[0]["content"] += (
+            f"\n\nYou MUST return a JSON object conforming exactly to this JSON schema:\n{schema_json}"
+        )
+        
+        response = client.chat.completions.create(
+            model=settings.GEMINI_MODEL,
+            messages=payload_messages,
+            response_format={"type": "json_object"},
+            temperature=temperature
+        )
+        content = response.choices[0].message.content
+        logger.debug("Gemini JSON response parsed: %s", content)
+        return response_format.model_validate_json(content)
+
     def _run_completion(
         self, 
         messages: List[Dict[str, str]], 
@@ -63,36 +99,59 @@ class AgentNodeRunner:
         temperature: float = 0.0
     ) -> Any:
         """
-        Abstracted completion helper. Uses OpenAI beta.parse Structured Outputs
-        or falls back to standard JSON mode + Pydantic validation for Groq.
+        Abstracted completion helper. Uses OpenAI beta.parse Structured Outputs,
+        falls back to standard JSON mode + Pydantic validation for Groq, and 
+        provides self-healing automatic fallback to Gemini in case of Groq 429 Rate Limits.
         """
-        if self.is_groq:
-            # Groq JSON mode validation
-            schema_json = response_format.model_json_schema()
-            payload_messages = [msg.copy() for msg in messages]
-            # Inject JSON schema formatting instructions
-            payload_messages[0]["content"] += (
-                f"\n\nYou MUST return a JSON object conforming exactly to this JSON schema:\n{schema_json}"
-            )
+        # If the API key is a Gemini API key (starts with AIzaSy), route directly to Gemini
+        if self.api_key and self.api_key.startswith("AIzaSy"):
+            return self._run_completion_gemini(messages, response_format, temperature)
             
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=payload_messages,
-                response_format={"type": "json_object"},
-                temperature=temperature
-            )
-            content = response.choices[0].message.content
-            logger.debug("Groq JSON response parsed: %s", content)
-            return response_format.model_validate_json(content)
-        else:
-            # Standard OpenAI Structured Outputs
-            response = self.client.beta.chat.completions.parse(
-                model=self.model_name,
-                messages=messages,
-                response_format=response_format,
-                temperature=temperature
-            )
-            return response.choices[0].message.parsed
+        try:
+            if self.is_groq:
+                # Groq JSON mode validation
+                schema_json = response_format.model_json_schema()
+                payload_messages = [msg.copy() for msg in messages]
+                payload_messages[0]["content"] += (
+                    f"\n\nYou MUST return a JSON object conforming exactly to this JSON schema:\n{schema_json}"
+                )
+                
+                response = self.client.chat.completions.create(
+                    model=self.model_name,
+                    messages=payload_messages,
+                    response_format={"type": "json_object"},
+                    temperature=temperature
+                )
+                content = response.choices[0].message.content
+                logger.debug("Groq JSON response parsed: %s", content)
+                return response_format.model_validate_json(content)
+            else:
+                # Standard OpenAI Structured Outputs
+                response = self.client.beta.chat.completions.parse(
+                    model=self.model_name,
+                    messages=messages,
+                    response_format=response_format,
+                    temperature=temperature
+                )
+                return response.choices[0].message.parsed
+        except Exception as e:
+            # Check for Rate Limit Exceeded (HTTP 429) errors
+            import openai
+            is_rate_limit = False
+            if isinstance(e, openai.RateLimitError):
+                is_rate_limit = True
+            elif "rate_limit" in str(e).lower() or "429" in str(e):
+                is_rate_limit = True
+                
+            has_gemini = bool(settings.GEMINI_API_KEY) or (self.api_key and self.api_key.startswith("AIzaSy"))
+            if is_rate_limit and has_gemini:
+                logger.warning("Groq/OpenAI Rate limit exceeded. Falling back to Gemini to self-heal the request...")
+                try:
+                    return self._run_completion_gemini(messages, response_format, temperature)
+                except Exception as fallback_err:
+                    logger.error("Gemini fallback also failed: %s", str(fallback_err))
+                    raise e
+            raise e
 
     def run_supervisor(
         self, 

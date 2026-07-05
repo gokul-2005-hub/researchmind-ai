@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     OPENAI_API_KEY: str = ""
     HF_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.1-8b-instant"
+    GEMINI_API_KEY: str = ""
+    GEMINI_MODEL: str = "gemini-1.5-flash"
 
     # Embedding Settings
     # Supported: "local" or "openai"
