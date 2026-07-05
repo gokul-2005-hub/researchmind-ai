@@ -33,6 +33,18 @@ class AgentNodeRunner:
     def __init__(self, api_key: str):
         self.api_key = api_key
 
+    @property
+    def is_groq(self) -> bool:
+        """
+        Helper property for the workflow scheduler to optimize context size constraints.
+        Returns True if Groq is a configured LLM provider.
+        """
+        if settings.ALL_GROQ_KEYS.strip():
+            return True
+        if self.api_key and self.api_key.startswith("gsk_"):
+            return True
+        return False
+
     def _run_gemini_attempt(
         self,
         key: str,
