@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     # Models to use
     GEMINI_MODEL: str = "gemini-2.5-flash"
     GROQ_MODEL: str = "llama-3.1-8b-instant"
-    OPENROUTER_MODEL: str = "meta-llama/llama-3.1-8b-instruct:free"
+    OPENROUTER_MODEL: str = "openrouter/free"
     
     # Provider Fallback Orders
     FALLBACK_ORDER: str = "gemini, groq, openrouter"
