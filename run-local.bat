@@ -24,6 +24,9 @@ start "ResearchMind Backend Server" cmd /k "cd backend && .venv\Scripts\activate
 echo [2/2] Launching Vite React Client on http://localhost:5173...
 start "ResearchMind Frontend Client" cmd /k "cd frontend && npm run dev"
 
+:: Open default web browser
+start http://localhost:5173
+
 echo.
 echo ======================================================================
 echo Local stack servers initiated.
