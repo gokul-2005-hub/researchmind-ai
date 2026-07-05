@@ -28,9 +28,19 @@ class Settings(BaseSettings):
     # LLM Settings
     OPENAI_API_KEY: str = ""
     HF_API_KEY: str = ""
+    
+    # Models to use
+    GEMINI_MODEL: str = "gemini-2.5-flash"
     GROQ_MODEL: str = "llama-3.1-8b-instant"
-    GEMINI_API_KEY: str = ""
-    GEMINI_MODEL: str = "gemini-1.5-flash"
+    OPENROUTER_MODEL: str = "meta-llama/llama-3.1-8b-instruct:free"
+    
+    # Provider Fallback Orders
+    FALLBACK_ORDER: str = "gemini, groq, openrouter"
+    
+    # Master Keys (comma-separated lists)
+    ALL_GEMINI_KEYS: str = ""
+    ALL_GROQ_KEYS: str = ""
+    ALL_OPENROUTER_KEYS: str = ""
 
     # Embedding Settings
     # Supported: "local" or "openai"

@@ -26,62 +26,29 @@ logger = logging.getLogger("app.agents.nodes")
 
 class AgentNodeRunner:
     """
-    Executes specialized LLM agents using OpenAI's Structured Outputs or Groq polyfills.
-    Automatically detects the provider keys and routes requests accordingly.
+    Executes specialized LLM agents using OpenAI, Groq, Gemini, or OpenRouter.
+    Includes a robust multi-provider fallback order and comma-separated master key rotation
+    to make requests extremely resilient to rate limits (429) or token quotas.
     """
     def __init__(self, api_key: str):
         self.api_key = api_key
-        self._client = None
-        self.is_groq = api_key.startswith("gsk_") if api_key else False
-        
-        if self.is_groq:
-            logger.info("Auto-detect: Groq API Key prefix found.")
-            self.model_name = settings.GROQ_MODEL
-        else:
-            self.model_name = "gpt-4o-mini" # OpenAI Structured Outputs model
 
-    @property
-    def client(self) -> OpenAI:
-        if self._client is None:
-            if not self.api_key:
-                raise ValueError("OpenAI/Groq API Key is missing. Please configure it in your environment.")
-            
-            if self.is_groq:
-                logger.info("Initializing OpenAI Client configured for Groq endpoints...")
-                self._client = OpenAI(
-                    api_key=self.api_key,
-                    base_url="https://api.groq.com/openai/v1"
-                )
-            else:
-                self._client = OpenAI(api_key=self.api_key)
-        return self._client
-
-    def _run_completion_gemini(
+    def _run_gemini_attempt(
         self,
+        key: str,
         messages: List[Dict[str, str]],
         response_format: Any,
-        temperature: float = 0.0
+        temperature: float
     ) -> Any:
-        """
-        Executes structured output completion against Google Gemini using its OpenAI-compatible endpoint.
-        """
-        api_key = settings.GEMINI_API_KEY or (self.api_key if self.api_key.startswith("AIzaSy") else "")
-        if not api_key:
-            raise ValueError("Gemini API Key is missing. Please configure GEMINI_API_KEY in your environment.")
-            
-        logger.info("Auto-routing agent completion to Google Gemini (%s)...", settings.GEMINI_MODEL)
         client = OpenAI(
-            api_key=api_key,
+            api_key=key,
             base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
         )
-        
-        # Inject JSON schema instructions for Gemini JSON mode validation
         schema_json = response_format.model_json_schema()
         payload_messages = [msg.copy() for msg in messages]
         payload_messages[0]["content"] += (
             f"\n\nYou MUST return a JSON object conforming exactly to this JSON schema:\n{schema_json}"
         )
-        
         response = client.chat.completions.create(
             model=settings.GEMINI_MODEL,
             messages=payload_messages,
@@ -89,8 +56,73 @@ class AgentNodeRunner:
             temperature=temperature
         )
         content = response.choices[0].message.content
-        logger.debug("Gemini JSON response parsed: %s", content)
         return response_format.model_validate_json(content)
+
+    def _run_groq_attempt(
+        self,
+        key: str,
+        messages: List[Dict[str, str]],
+        response_format: Any,
+        temperature: float
+    ) -> Any:
+        client = OpenAI(
+            api_key=key,
+            base_url="https://api.groq.com/openai/v1"
+        )
+        schema_json = response_format.model_json_schema()
+        payload_messages = [msg.copy() for msg in messages]
+        payload_messages[0]["content"] += (
+            f"\n\nYou MUST return a JSON object conforming exactly to this JSON schema:\n{schema_json}"
+        )
+        response = client.chat.completions.create(
+            model=settings.GROQ_MODEL,
+            messages=payload_messages,
+            response_format={"type": "json_object"},
+            temperature=temperature
+        )
+        content = response.choices[0].message.content
+        return response_format.model_validate_json(content)
+
+    def _run_openrouter_attempt(
+        self,
+        key: str,
+        messages: List[Dict[str, str]],
+        response_format: Any,
+        temperature: float
+    ) -> Any:
+        client = OpenAI(
+            api_key=key,
+            base_url="https://openrouter.ai/api/v1"
+        )
+        schema_json = response_format.model_json_schema()
+        payload_messages = [msg.copy() for msg in messages]
+        payload_messages[0]["content"] += (
+            f"\n\nYou MUST return a JSON object conforming exactly to this JSON schema:\n{schema_json}"
+        )
+        response = client.chat.completions.create(
+            model=settings.OPENROUTER_MODEL,
+            messages=payload_messages,
+            response_format={"type": "json_object"},
+            temperature=temperature
+        )
+        content = response.choices[0].message.content
+        return response_format.model_validate_json(content)
+
+    def _run_openai_attempt(
+        self,
+        key: str,
+        messages: List[Dict[str, str]],
+        response_format: Any,
+        temperature: float
+    ) -> Any:
+        client = OpenAI(api_key=key)
+        response = client.beta.chat.completions.parse(
+            model="gpt-4o-mini",
+            messages=messages,
+            response_format=response_format,
+            temperature=temperature
+        )
+        return response.choices[0].message.parsed
 
     def _run_completion(
         self, 
@@ -99,59 +131,64 @@ class AgentNodeRunner:
         temperature: float = 0.0
     ) -> Any:
         """
-        Abstracted completion helper. Uses OpenAI beta.parse Structured Outputs,
-        falls back to standard JSON mode + Pydantic validation for Groq, and 
-        provides self-healing automatic fallback to Gemini in case of Groq 429 Rate Limits.
+        Runs completions against LLM providers sequentially using fallback orders and rotated keys.
         """
-        # If the API key is a Gemini API key (starts with AIzaSy), route directly to Gemini
-        if self.api_key and self.api_key.startswith("AIzaSy"):
-            return self._run_completion_gemini(messages, response_format, temperature)
+        # Parse comma-separated key lists
+        gemini_keys = [k.strip() for k in settings.ALL_GEMINI_KEYS.split(",") if k.strip()]
+        groq_keys = [k.strip() for k in settings.ALL_GROQ_KEYS.split(",") if k.strip()]
+        openrouter_keys = [k.strip() for k in settings.ALL_OPENROUTER_KEYS.split(",") if k.strip()]
+        
+        # Detect key types from default API key field if master lists are empty
+        if not gemini_keys and self.api_key and self.api_key.startswith("AIzaSy"):
+            gemini_keys = [self.api_key]
+        if not groq_keys and self.api_key and self.api_key.startswith("gsk_"):
+            groq_keys = [self.api_key]
+        if not openrouter_keys and self.api_key and self.api_key.startswith("sk-or-"):
+            openrouter_keys = [self.api_key]
             
-        try:
-            if self.is_groq:
-                # Groq JSON mode validation
-                schema_json = response_format.model_json_schema()
-                payload_messages = [msg.copy() for msg in messages]
-                payload_messages[0]["content"] += (
-                    f"\n\nYou MUST return a JSON object conforming exactly to this JSON schema:\n{schema_json}"
-                )
+        # Detect standard OpenAI API keys
+        openai_keys = [self.api_key] if (self.api_key and not self.api_key.startswith("gsk_") and not self.api_key.startswith("AIzaSy") and not self.api_key.startswith("sk-or-")) else []
+        
+        # Get fallback order
+        providers = [p.strip().lower() for p in settings.FALLBACK_ORDER.split(",") if p.strip()]
+        
+        # If standard OpenAI key is detected, prioritize it first in fallback routing
+        if openai_keys:
+            providers = ["openai"] + [p for p in providers if p != "openai"]
+            
+        provider_keys = {
+            "gemini": gemini_keys,
+            "groq": groq_keys,
+            "openrouter": openrouter_keys,
+            "openai": openai_keys
+        }
+        
+        last_error = None
+        for provider in providers:
+            keys = provider_keys.get(provider, [])
+            if not keys:
+                continue
                 
-                response = self.client.chat.completions.create(
-                    model=self.model_name,
-                    messages=payload_messages,
-                    response_format={"type": "json_object"},
-                    temperature=temperature
-                )
-                content = response.choices[0].message.content
-                logger.debug("Groq JSON response parsed: %s", content)
-                return response_format.model_validate_json(content)
-            else:
-                # Standard OpenAI Structured Outputs
-                response = self.client.beta.chat.completions.parse(
-                    model=self.model_name,
-                    messages=messages,
-                    response_format=response_format,
-                    temperature=temperature
-                )
-                return response.choices[0].message.parsed
-        except Exception as e:
-            # Check for Rate Limit Exceeded (HTTP 429) errors
-            import openai
-            is_rate_limit = False
-            if isinstance(e, openai.RateLimitError):
-                is_rate_limit = True
-            elif "rate_limit" in str(e).lower() or "429" in str(e):
-                is_rate_limit = True
-                
-            has_gemini = bool(settings.GEMINI_API_KEY) or (self.api_key and self.api_key.startswith("AIzaSy"))
-            if is_rate_limit and has_gemini:
-                logger.warning("Groq/OpenAI Rate limit exceeded. Falling back to Gemini to self-heal the request...")
+            logger.info("Executing completion using provider: %s (%d keys configured)", provider, len(keys))
+            for i, key in enumerate(keys):
                 try:
-                    return self._run_completion_gemini(messages, response_format, temperature)
-                except Exception as fallback_err:
-                    logger.error("Gemini fallback also failed: %s", str(fallback_err))
-                    raise e
-            raise e
+                    if provider == "gemini":
+                        return self._run_gemini_attempt(key, messages, response_format, temperature)
+                    elif provider == "groq":
+                        return self._run_groq_attempt(key, messages, response_format, temperature)
+                    elif provider == "openrouter":
+                        return self._run_openrouter_attempt(key, messages, response_format, temperature)
+                    elif provider == "openai":
+                        return self._run_openai_attempt(key, messages, response_format, temperature)
+                except Exception as e:
+                    logger.warning("Completion failed for provider %s with key index %d: %s", provider, i, str(e))
+                    last_error = e
+                    continue
+                    
+        # If all fallback options fail, raise the last encountered error
+        if last_error:
+            raise last_error
+        raise RuntimeError("No configured LLM keys or providers were available to complete the request.")
 
     def run_supervisor(
         self, 
