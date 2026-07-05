@@ -30,6 +30,14 @@ class AgentNodeRunner:
     Includes a robust multi-provider fallback order and comma-separated master key rotation
     to make requests extremely resilient to rate limits (429) or token quotas.
     """
+    # Class-level state to remember the last successful key index for each provider across requests
+    _current_key_indices = {
+        "gemini": 0,
+        "groq": 0,
+        "openrouter": 0,
+        "openai": 0
+    }
+
     def __init__(self, api_key: str):
         self.api_key = api_key
 
@@ -181,17 +189,29 @@ class AgentNodeRunner:
             if not keys:
                 continue
                 
-            logger.info("Executing completion using provider: %s (%d keys configured)", provider, len(keys))
-            for i, key in enumerate(keys):
+            num_keys = len(keys)
+            logger.info("Executing completion using provider: %s (%d keys configured)", provider, num_keys)
+            
+            # Start from the last successful key index
+            start_index = self._current_key_indices.get(provider, 0) % num_keys
+            
+            # Try every key starting from the current index, wrapping around
+            for offset in range(num_keys):
+                i = (start_index + offset) % num_keys
+                key = keys[i]
                 try:
                     if provider == "gemini":
-                        return self._run_gemini_attempt(key, messages, response_format, temperature)
+                        res = self._run_gemini_attempt(key, messages, response_format, temperature)
                     elif provider == "groq":
-                        return self._run_groq_attempt(key, messages, response_format, temperature)
+                        res = self._run_groq_attempt(key, messages, response_format, temperature)
                     elif provider == "openrouter":
-                        return self._run_openrouter_attempt(key, messages, response_format, temperature)
+                        res = self._run_openrouter_attempt(key, messages, response_format, temperature)
                     elif provider == "openai":
-                        return self._run_openai_attempt(key, messages, response_format, temperature)
+                        res = self._run_openai_attempt(key, messages, response_format, temperature)
+                    
+                    # If successful, save this index as the current active key for this provider
+                    self._current_key_indices[provider] = i
+                    return res
                 except Exception as e:
                     logger.warning("Completion failed for provider %s with key index %d: %s", provider, i, str(e))
                     last_error = e
