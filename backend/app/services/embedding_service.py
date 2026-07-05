@@ -156,7 +156,7 @@ class HuggingFaceEmbeddingService(BaseEmbeddingService):
     Cloud-based embedding generation using Hugging Face's new router Inference API.
     Runs entirely in the cloud, completely free, requiring a free Hugging Face API key.
     """
-    def __init__(self, api_key: str, model_name: str = "sentence-transformers/all-MiniLM-L6-v2"):
+    def __init__(self, api_key: str, model_name: str = "BAAI/bge-small-en-v1.5"):
         self.api_key = api_key
         self.model_name = model_name
 
@@ -164,8 +164,8 @@ class HuggingFaceEmbeddingService(BaseEmbeddingService):
         import requests
         import time
         
-        # Explicitly specify the feature-extraction pipeline task to override default model tag
-        api_url = f"https://router.huggingface.co/hf-inference/pipeline/feature-extraction/{self.model_name}"
+        # Hugging Face Router endpoint
+        api_url = f"https://router.huggingface.co/hf-inference/models/{self.model_name}"
         headers = {}
         
         # Attach Authorization if using a key
